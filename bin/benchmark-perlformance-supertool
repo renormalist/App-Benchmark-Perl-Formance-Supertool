@@ -67,24 +67,12 @@ sub usage {
   general information about Perl::Formance.
 
   This tool combines all of the separately usable tools around
-  Benchmark::Perl::Formance when you want the whole mix from Perl
-  building to running the benchmark database, storing results there,
-  and rendering charts.
-
-  The combined separate parts are
-
-    - App::Bootstrap::Perl ... building Perl versions from git
-
-    - BenchmarkAnything ... benchmarking schema, database, tools
-
-    - Benchmark::Perl::Formance ... actual benchmarking
-
-  inclusive several plugins and other dependencies.
+  Benchmark::Perl::Formance.
 
   Usage:
 
-    export VAR1=val1
-    export VAR2=val2
+    export PF_OPTION_X=val1
+    export PF_OPTION_Y=val2
     benchmark-perlformance-supertool [COMMAND]
 
     You declare exactly one COMMAND. Everything else happens via
@@ -98,7 +86,7 @@ sub usage {
     configure them separately when you want to do just parts of it on
     the same setup as this tool uses.
 
-  Variables:
+  Available variables:
 
      - PF_QUALID
      - PF_QUERYBUNDLE
@@ -114,6 +102,8 @@ sub usage {
      - PF_SERVER_CFGFILE
      - PF_CLIENT_CFGFILE
 
+  Please run 'man benchmark-perlformance-supertool' for documentation.
+
   Commands:
 
      - help   ... Show this help.
@@ -124,7 +114,7 @@ sub usage {
 
      - build  ... Build perls and/or cpan dependencies.
 
-     - database ... Run benchmarkanything database daemon.
+     - daemon ... Run benchmarkanything database daemon.
 
      - benchmark ... Run benchmarks and add results to database.
 
@@ -254,7 +244,7 @@ sub main {
     {
        bootstrap_perl();
     }
-  elsif ($cmd eq 'database')
+  elsif ($cmd eq 'daemon')
     {
        benchmarkanything_daemon();
     }
@@ -278,3 +268,116 @@ sub main {
 }
 
 main(@ARGV);
+
+=pod
+
+=head1 ABOUT
+
+The Benchmark::Perl::Formance supertool
+
+See L<http://renormalist.github.io/Benchmark-Perl-Formance/> for
+general information about Perl::Formance.
+
+This tool combines all of the separately usable tools around
+Benchmark::Perl::Formance when you want the whole mix from Perl
+building to running the benchmark database, storing results there, and
+rendering charts.
+
+The combined separate parts are
+
+=over 4
+
+=item * L<App::Bootstrap::Perl> ... building Perl versions from git
+
+=item * L<Task::BenchmarkAnything> ... benchmarking schema, database, tools
+
+=item * L<Benchmark::Perl::Formance> ... actual Perl5 benchmarking framework
+
+=back
+
+inclusive several plugins and other dependencies.
+
+=head1 SYNOPSIS
+
+    export PF_OPTION_X=val1
+    export PF_OPTION_Y=val2
+    benchmark-perlformance-supertool [COMMAND]
+
+You declare exactly one COMMAND. Everything else happens via
+environment variables, so that you declare what you are aiming for in
+your environment and regularly call when you want to do benchmark work
+in that setup.
+
+The variables are all prefixed with PF_ (note, not PERLFORMANCE_) so
+you can still use the components separately in other contexts without
+conflict. On the other side this also means you *have* to configure
+them separately when you want to do just parts of it on the same setup
+as this tool uses.
+
+=head2 Variables
+
+=over 4
+
+=item * PF_QUALID
+
+=item * PF_QUERYBUNDLE
+
+=item * PF_PLUGINS
+
+=item * PF_PERL_VERSIONS
+
+=item * PF_PERL_MODULES
+
+=item * PF_HOME
+
+=item * PF_INSTANCE_NAME
+
+=item * PF_DB_NAME
+
+=item * PF_SERVER_HOST
+
+=item * PF_SERVER_PORT
+
+=item * PF_FORCE
+
+=item * PF_SERVER_CFGFILE
+
+=item * PF_CLIENT_CFGFILE
+
+=back
+
+=head2 Subcommands
+
+=over 4
+
+=item * help
+
+Show usage text.
+
+=item * setup
+
+Initialize a subdir along the provided variables. This is expected to
+be done only once. It does not overwrite existing files unless
+PF_FORCE is set to 1.
+
+=item * build
+
+Build perls and/or cpan dependencies.
+
+=item * daemon
+
+Run benchmarkanything database daemon with REST api. Keep this
+running, in contrast to the other tools which are more like one-shot
+commands.
+
+=item * benchmark
+
+Run benchmarks and add results to database.
+
+=item * charts
+
+(Re-)render charts.
+
+=back
+
+=cut
