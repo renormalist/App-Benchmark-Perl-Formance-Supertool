@@ -1,0 +1,5 @@
+Revision history for {{$dist->name}}
+
+{{$NEXT}}
+        - basic frontend to Benchmark::Perl::Formance related tools;
+          run benchmark-perlformance-supertool help for overview

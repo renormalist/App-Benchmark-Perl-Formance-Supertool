@@ -1,0 +1,280 @@
+#! /usr/bin/perl
+# -*- mode: cperl -*-
+
+# PODNAME: benchmark-perlformance-supertool
+# ABSTRACT: Frontend to all Benchmark::Perl::Formance related tools
+
+use 5.016;
+
+use File::Basename qw(basename dirname);
+
+our $force      = $ENV{PF_FORCE};
+our $debug      = $ENV{PF_DEBUG};
+our $verbose    = $ENV{PF_VERBOSE};
+our $fastmode   = $ENV{PF_FASTMODE};
+our $arg_fast   = $fastmode ? "--fastmode" : "";
+
+our $pf_querybundle = $ENV{PF_QUERYBUNDLE};
+our $pf_qual_id = $ENV{PF_QUALID};
+
+our $pf_plugins = $ENV{PF_PLUGINS};
+our @pf_plugins = split /[, ]+/, $pf_plugins;
+
+our $pf_perl_versions = $ENV{PF_PERL_VERSIONS};
+our @pf_perl_versions = split /[, ]+/, $pf_perl_versions;
+
+our $pf_perl_paths = $ENV{PF_PERL_PATHS};
+our @pf_perl_paths = split /[, ]+/, $pf_perl_paths;
+
+our $pf_qual_perl_modules  = $ENV{PF_PERL_MODULES};
+our @pf_qual_perl_modules  = split /[, ]+/, $pf_qual_perl_modules;
+
+our $pf_instance_home = $ENV{PF_HOME} || $ENV{HOME}."/.perlformance";
+our $pf_instance_name = $ENV{PF_INSTANCE_NAME} || "perlformance";
+our $pf_db_basename   = $ENV{PF_DB_NAME} || "benchmarkanything-$pf_instance_name.sqlite";
+
+our $ba_server_host = $ENV{PF_SERVER_HOST}   || 'localhost';
+our $ba_server_port = $ENV{PF_SERVER_PORT}   || 31415;
+
+our $pf_cfg_server_filename = $ENV{PF_SERVER_CFGFILE} || "$pf_instance_home/benchmarkanything-perlformance-server-$pf_instance_name.cfg";
+our $ba_cfg_server_content  = qq!
+benchmarkanything:
+  debug: 0
+  verbose: 0
+  backend: local
+  storage:
+    backend:
+      sql:
+        dsn: dbi:SQLite:$pf_instance_home/$pf_db_basename
+    frontend:
+      http:
+        disable_process_benchmarkanything_queue: 1
+!;
+
+our $pf_cfg_client_filename = $ENV{PF_CLIENT_CFGFILE} || "$pf_instance_home/benchmarkanything-perlformance-client-$pf_instance_name.cfg";
+our $ba_cfg_client_content = qq!
+benchmarkanything:
+  backend: http
+  backends:
+    http:
+      base_url: http://${ba_server_host}:${ba_server_port}
+!;
+
+sub usage {
+  say "The Benchmark::Perl::Formance supertool
+
+  See http://renormalist.github.io/Benchmark-Perl-Formance/ for
+  general information about Perl::Formance.
+
+  This tool combines all of the separately usable tools around
+  Benchmark::Perl::Formance when you want the whole mix from Perl
+  building to running the benchmark database, storing results there,
+  and rendering charts.
+
+  The combined separate parts are
+
+    - App::Bootstrap::Perl ... building Perl versions from git
+
+    - BenchmarkAnything ... benchmarking schema, database, tools
+
+    - Benchmark::Perl::Formance ... actual benchmarking
+
+  inclusive several plugins and other dependencies.
+
+  Usage:
+
+    export VAR1=val1
+    export VAR2=val2
+    benchmark-perlformance-supertool [COMMAND]
+
+    You declare exactly one COMMAND. Everything else happens via
+    environment variables, so that you declare what you are aiming for
+    in your environment and regularly call when you want to do
+    benchmark work in that setup.
+
+    The variables are all prefixed with PF_ (note, not PERLFORMANCE_)
+    so you can still use the components separately in other contexts
+    without conflict. On the other side this also means you *have* to
+    configure them separately when you want to do just parts of it on
+    the same setup as this tool uses.
+
+  Variables:
+
+     - PF_QUALID
+     - PF_QUERYBUNDLE
+     - PF_PLUGINS
+     - PF_PERL_VERSIONS
+     - PF_PERL_MODULES
+     - PF_HOME
+     - PF_INSTANCE_NAME
+     - PF_DB_NAME
+     - PF_SERVER_HOST
+     - PF_SERVER_PORT
+     - PF_FORCE
+     - PF_SERVER_CFGFILE
+     - PF_CLIENT_CFGFILE
+
+  Commands:
+
+     - help   ... Show this help.
+
+     - setup  ... Initialize a subdir along the provided variables;
+                  expected to be done only once; does not overwrite
+                  files unless PF_FORCE is set to 1.
+
+     - build  ... Build perls and/or cpan dependencies.
+
+     - database ... Run benchmarkanything database daemon.
+
+     - benchmark ... Run benchmarks and add results to database.
+
+     - charts ... (Re-)render charts.
+";
+}
+
+sub set_environment_variables_server {
+  say "Set BENCHMARKANYTHING_CONFIGFILE=$pf_cfg_server_filename" if $debug;
+  $ENV{BENCHMARKANYTHING_CONFIGFILE} = "$pf_cfg_server_filename";
+}
+
+sub set_environment_variables_client {
+  say "Set BENCHMARKANYTHING_CONFIGFILE=$pf_cfg_client_filename" if $debug;
+  $ENV{BENCHMARKANYTHING_CONFIGFILE} = "$pf_cfg_client_filename";
+}
+
+sub set_environment_variables_common {
+  say "Set PERLFORMANCE_QUALID=$pf_qual_id" if $debug;
+  $ENV{PERLFORMANCE_QUALID} = "$pf_qual_id";
+  $ENV{PERL_CANARY_STABILITY_NOPROMPT} = 1;
+}
+
+sub printc { say join(" ", @_) }
+
+sub setup_benchmarkanything_instance {
+  set_environment_variables_common();
+  set_environment_variables_server();
+
+  say "Set up benchmarkanything instance" if $debug;
+
+  mkdir dirname($pf_cfg_server_filename);
+  mkdir dirname($pf_cfg_client_filename);
+
+  if (! -e $pf_cfg_server_filename || $force) {
+    my $F;
+    open $F, '>', $pf_cfg_server_filename;
+    print $F $ba_cfg_server_content;
+    close $F;
+  } else {
+    say STDERR "Already exists: $pf_cfg_server_filename";
+  }
+
+  if (! -e $pf_cfg_client_filename || $force) {
+    my $F;
+    open $F, '>', $pf_cfg_client_filename;
+    print $F $ba_cfg_client_content;
+    close $F;
+  } else {
+    say STDERR "Already exists: $pf_cfg_client_filename";
+  }
+
+  if (! -e $pf_db_basename || $force) {
+    system "benchmarkanything-storage createdb";
+  } else {
+    say STDERR "Already exists: $pf_db_basename";
+  }
+}
+
+sub bootstrap_perl {
+  set_environment_variables_common();
+}
+
+sub benchmarkanything_daemon {
+  set_environment_variables_common();
+  set_environment_variables_server();
+
+  say  'benchmarkanything-storage-frontend-http', 'daemon', '-l', "http://$ba_server_host:$ba_server_port" if $debug;
+  exec 'benchmarkanything-storage-frontend-http', 'daemon', '-l', "http://$ba_server_host:$ba_server_port";
+}
+
+sub benchmarkanything_processqueue {
+  set_environment_variables_common();
+  set_environment_variables_server();
+
+  say    'benchmarkanything-storage', 'processqueue' if $debug;
+  system 'benchmarkanything-storage', 'processqueue';
+
+}
+sub benchmarkanything_stats {
+  benchmarkanything_processqueue();
+
+  set_environment_variables_common();
+  set_environment_variables_client();
+
+  say    'benchmarkanything-storage', 'stats' if $debug;
+  system 'benchmarkanything-storage', 'stats';
+}
+
+sub benchmark_perlformance {
+  set_environment_variables_common();
+  set_environment_variables_client();
+
+  say 'No perlformance plugins provided.' if !@pf_plugins;
+  say 'No perl paths provided.' if !@pf_perl_paths;
+  foreach my $path (@pf_perl_paths) {
+    foreach my $p (@pf_plugins) {
+      system ("env | grep -E '(BENCHMARKANYTHING|PERLFORMANCE)'");
+      printc "$path/bin/benchmark-perlformance-", "--plugin=$p", '-vvv', '--benchmarkanything-report', $arg_fast if $debug;
+      system "$path/bin/benchmark-perlformance", "--plugin=$p", '-vvv', '--benchmarkanything-report', $arg_fast;
+    }
+  }
+}
+
+sub benchmarkanything_charts {
+  set_environment_variables_common();
+
+  set_environment_variables_server();
+  system "benchmarkanything-storage", "processqueue";
+
+  set_environment_variables_client();
+  system "benchmark-perlformance-analyze-benchmarkanything", "--querybundle=$pf_querybundle", "--verbose";
+}
+
+sub main {
+  my $cmd = $_[0];
+
+  if (!@_ or $cmd eq 'help')
+    {
+      usage();
+    }
+  elsif ($cmd eq 'setup')
+    {
+      setup_benchmarkanything_instance();
+    }
+  elsif ($cmd eq 'build')
+    {
+       bootstrap_perl();
+    }
+  elsif ($cmd eq 'database')
+    {
+       benchmarkanything_daemon();
+    }
+  elsif ($cmd eq 'stats')
+    {
+       benchmarkanything_stats();
+    }
+  elsif ($cmd eq 'benchmark')
+    {
+       benchmark_perlformance();
+    }
+  elsif ($cmd eq 'charts')
+    {
+      benchmarkanything_charts();
+    }
+  else
+    {
+      say 'No-op.' if $debug;
+    }
+
+}
+
+main(@ARGV);
